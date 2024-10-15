@@ -1,5 +1,7 @@
 #!/bin/bash
 
+DOCKER_COMPOSE="$(realpath "$(dirname "${BASH_SOURCE[0]}")/docker-compose.yml")"
+
 # default must match docker-compose.yml
 WORDPRESS_DB_HOST=wptest-db
 WORDPRESS_DB_NAME=wordpress
@@ -73,7 +75,7 @@ zip_plugin() {
 
 file_exists() {
 	[[ -n "${1}" ]] || return 1
-	docker compose exec wp stat "${1}" &>/dev/null
+	docker compose -f "${DOCKER_COMPOSE}" exec wp stat "${1}" &>/dev/null
 }
 
 require_plugins_test_bootstrap() {
@@ -92,7 +94,7 @@ require_plugins_test_bootstrap() {
 
 		echo -e "\n>>>> Requiring '${plugin}' in test bootstrap\n"
 		# insert the require before the line that requires our plugin
-		docker compose exec wp sed -E -i \
+		docker compose -f "${DOCKER_COMPOSE}" exec wp sed -E -i \
 			'/^(\s*)require .*__FILE__.*\/('"${PLUGIN_NAME}"'|plugin)\.php/ s/^((\s*).*)/\2require '"'${file//\//\\/}'"';\n\1/' \
 			"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests/bootstrap.php"
 	done
@@ -164,27 +166,28 @@ zip_plugin || exit $?
 echo -e "\n>>>> Generated '${PLUGIN_ZIP}'\n"
 
 if [[ ${DO_INSTALL} -ne 0 ]]; then
-	docker compose cp "${PLUGIN_ZIP}" wp:/usr/local/dist/ || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" cp "${PLUGIN_ZIP}" wp:/usr/local/dist/ || exit $?
 
 	REMOTE_PLUGIN_ZIP=/usr/local/dist/"$(basename "${PLUGIN_ZIP}")"
-	docker compose exec wp chown root:root "${REMOTE_PLUGIN_ZIP}" || exit $?
-	docker compose exec wp chmod 755 "${REMOTE_PLUGIN_ZIP}" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" exec wp chown root:root "${REMOTE_PLUGIN_ZIP}" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" exec wp chmod 755 "${REMOTE_PLUGIN_ZIP}" || exit $?
 	echo -e "\n>>>> Copied plugin zip to container\n"
 
-	if docker compose exec wp wp plugin is-installed "${PLUGIN_NAME}"; then
-		docker compose exec wp wp plugin uninstall --deactivate "${PLUGIN_NAME}" || exit $?
+	if docker compose -f "${DOCKER_COMPOSE}" exec wp wp plugin is-installed "${PLUGIN_NAME}"; then
+		docker compose -f "${DOCKER_COMPOSE}" exec wp wp plugin uninstall --deactivate "${PLUGIN_NAME}" || exit $?
 	fi
 
-	docker compose exec wp wp plugin install --force --activate "${REMOTE_PLUGIN_ZIP}" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" exec wp \
+		wp plugin install --force --activate "${REMOTE_PLUGIN_ZIP}" || exit $?
 	echo -e "\n>>>> Installed plugin\n"
 fi
 
 [[ ${RUN_TESTS} -eq 0 ]] && exit 0
 
-docker compose exec wp wp scaffold plugin-tests "${PLUGIN_NAME}" || exit $?
+docker compose -f "${DOCKER_COMPOSE}" exec wp wp scaffold plugin-tests "${PLUGIN_NAME}" || exit $?
 
 if ! file_exists /tmp/wordpress-tests-lib || [[ ${RESET_TEST} -ne 0 ]]; then
-	docker compose exec wp su www-data -s /bin/bash -- \
+	docker compose -f "${DOCKER_COMPOSE}" exec wp su www-data -s /bin/bash -- \
 		"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/bin/install-wp-tests.sh" \
 		"${WORDPRESS_DB_NAME}_test" root root "${WORDPRESS_DB_HOST}" latest || exit $?
 fi
@@ -195,17 +198,22 @@ echo -e "\n>>>> Generated plugin test environment\n"
 
 if [[ -e "${PLUGIN_DIR}"/tests ]]; then
 	# Delete the sample test and copy tests
-	docker compose exec wp rm "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests/test-sample.php" || exit $?
-	docker compose cp "${PLUGIN_DIR}"/tests wp:"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/" || exit $?
-	docker compose exec wp chown -R www-data:www-data "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests" || exit $?
-	docker compose exec wp chmod -R go+rX "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" exec wp \
+		rm "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests/test-sample.php" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" cp \
+		"${PLUGIN_DIR}"/tests wp:"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" exec wp \
+		chown -R www-data:www-data "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" exec wp \
+		chmod -R go+rX "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests" || exit $?
 else
 	# Enable the sample test
-	docker compose exec wp sed -i '/<exclude>/d' "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/phpunit.xml.dist" || exit $?
+	docker compose -f "${DOCKER_COMPOSE}" exec wp \
+		sed -i '/<exclude>/d' "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/phpunit.xml.dist" || exit $?
 fi
 echo -e "\n>>>> Copied test files to container\n"
 
 echo -e "\n>>>> Running tests\n"
 # Run the tests
-docker compose exec wp composer global exec -- \
+docker compose -f "${DOCKER_COMPOSE}" exec wp composer global exec -- \
 	phpunit -c "/var/www/html/wp-content/plugins/${PLUGIN_NAME}/phpunit.xml.dist" || exit $?

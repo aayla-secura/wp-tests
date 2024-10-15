@@ -51,6 +51,12 @@ IMPORTANT NOTES:
 
 See `./build-plugin.sh -h` for more options.
 
+# Viewing debug/error logs
+
+```
+docker compose exec wp tail -F /var/www/html/wp-content/logs/debug.log
+```
+
 # Cleaning up/resetting
 
 ```

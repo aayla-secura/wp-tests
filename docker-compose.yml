@@ -1,0 +1,63 @@
+name: wptest
+
+# docker-compose.yml
+services:
+  # MySQL database
+  db:
+    image: mariadb
+    restart: unless-stopped
+    container_name: wptest-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+    volumes:
+      - db-data:/var/lib/mysql
+
+  # PHPMyAdmin
+  phpmyadmin:
+    image: phpmyadmin
+    restart: unless-stopped
+    container_name: wptest-phpmyadmin
+    environment:
+      PMA_HOST: wptest-db
+      PMA_USER: wordpress
+      PMA_PASSWORD: wordpress
+    ports:
+      - 8888:80
+
+  # Wordpress
+  wp:
+    build:
+      context: .
+      dockerfile: ./docker/wordpress.Dockerfile
+    restart: unless-stopped
+    container_name: wptest-wp
+    environment:
+      WORDPRESS_DB_HOST: wptest-db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DEBUG: 1
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_CACHE', false);
+        define('ENVIRONMENT', 'local');
+    volumes:
+      - wp-data:/var/www/html
+      - ./docker/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+      - ./docker/error-logging.ini:/usr/local/etc/php/conf.d/error-logging.ini
+    ports:
+      - 8080:80
+    depends_on:
+      - db
+
+# Make network name pretty
+networks:
+  default:
+    name: wptest-net
+
+# Persist DB and WordPress data across containers
+volumes:
+  db-data:
+  wp-data:

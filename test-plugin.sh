@@ -2,17 +2,19 @@
 
 DOCKER_COMPOSE="$(realpath "$(dirname "${BASH_SOURCE[0]}")/docker-compose.yml")"
 
-# default must match docker-compose.yml
-WORDPRESS_DB_HOST=wptest-db
-WORDPRESS_DB_NAME=wordpress
-
+##### Default config
 PLUGIN_PATH=""
 PLUGIN_VERSION="0.0.0"
-REQUIRED_PLUGINS=()
 RUN_TESTS=1
-RESET_TEST=0
-PHP_UNIT_EXTRA_ARGS=()
+# TEST_HOOK="" # TODO
+TEST_GROUP=""
+RESET_TEST_ENV=0
+REQUIRED_PLUGINS=()
+WORDPRESS_DB_NAME=wordpress
+WORDPRESS_DB_HOST=wptest-db
+#####
 
+PHP_UNIT_EXTRA_ARGS=()
 PLUGIN_NAME=""
 PLUGIN_DIR=""
 PLUGIN_ZIP=""
@@ -32,27 +34,43 @@ Options:
 
   -n|--no-tests               Do not run unit tests. Only install the plugin.
 
+  -I|--init-hook <hook>       Run the tests during the given hook instead of
+                              the default muplugins_loaded.
+
   -g|--group <group>          Run only the given group of tests unit tests.
 
   -R|--reset                  Reset the test installation.
 
   -r|--require <plugin name>  Load the following plugin in the test bootstrap file.
                               Can be given more than once.
-                              If there's a .requires file in the plugin
-                              directory, plugin names will also be read from
-                              there, whitespace separated.
 
   -d|--db-name <prefix>       SQL database name. Default is 'wordpress'.
                               The test database will have _test suffix and
                               credentials root:root.
 
   -H|--host    <host>         Database hostname. Default is 'wptest-db'.
+
+_________________________
+
+Alternatively you can create a wp-tests.conf.sh in the _current_ directory
+(from which you invoke this script), with one or more of the following
+variables, which will override the default ones:
+
+PLUGIN_PATH=""
+PLUGIN_VERSION="0.0.0"
+RUN_TESTS=1
+TEST_GROUP=""
+RESET_TEST_ENV=0
+REQUIRED_PLUGINS=()
+WORDPRESS_DB_NAME=wordpress
+WORDPRESS_DB_HOST=wptest-db
 EOF
 	exit 1
 }
 
-set_plugin() {
-	PLUGIN_PATH="$(realpath "${1}")"
+check_plugin() {
+	PLUGIN_PATH="$(realpath "${PLUGIN_PATH}")"
+	[[ -d "${PLUGIN_PATH}" ]] || die "No such directory '${PLUGIN_PATH}'"
 
 	PLUGIN_NAME="$(basename "${PLUGIN_PATH}")"
 	PLUGIN_DIR="$(dirname "${PLUGIN_PATH}")"
@@ -77,13 +95,6 @@ file_exists() {
 }
 
 require_plugins_test_bootstrap() {
-	if [[ -e "${PLUGIN_DIR}/.requires" ]]; then
-		# plugin names can't contain spaces
-		for plugin in $(<"${PLUGIN_DIR}/.requires"); do
-			REQUIRED_PLUGINS+=("${plugin}")
-		done
-	fi
-
 	local plugin file
 	for plugin in "${REQUIRED_PLUGINS[@]}"; do
 		file="/var/www/html/wp-content/plugins/${plugin}/${plugin}.php"
@@ -98,12 +109,16 @@ require_plugins_test_bootstrap() {
 	done
 }
 
+########## Load conf
+[[ -f ./wp-tests.conf.sh ]] && . ./wp-tests.conf.sh
+
+########## Parse cmdline
+
 while [[ $# -gt 0 ]]; do
 	case "${1}" in
 	-p | --plugin)
 		[[ $# -ge 2 ]] || die "-p requires an argument"
-		[[ -d "${2}" ]] || die "No such directory '${2}'"
-		set_plugin "${2}"
+		PLUGIN_PATH="${2}"
 		shift 2
 		;;
 
@@ -118,14 +133,21 @@ while [[ $# -gt 0 ]]; do
 		shift 1
 		;;
 
+		# TODO
+	# -I | --init-hook)
+	#   [[ $# -ge 2 ]] || die "-I requires an argument"
+	#   TEST_HOOK="${2}"
+	#   shift 2
+	#   ;;
+
 	-g | --group)
 		[[ $# -ge 2 ]] || die "-g requires an argument"
-		PHP_UNIT_EXTRA_ARGS+=(--group "${2}")
+		TEST_GROUP="${2}"
 		shift 2
 		;;
 
 	-R | --reset)
-		RESET_TEST=1
+		RESET_TEST_ENV=1
 		shift 1
 		;;
 
@@ -157,8 +179,14 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
+########## Validate args
+check_plugin
+if [[ -n "${TEST_GROUP}" ]]; then
+	PHP_UNIT_EXTRA_ARGS+=(--group "${TEST_GROUP}")
+fi
+
 ########## Zip and upload the plugin
-[[ -z "${PLUGIN_PATH}" ]] && die "-p option is required"
+[[ -z "${PLUGIN_PATH}" ]] && die "You must specify a plugin path"
 echo -e "\n***** Building '${PLUGIN_PATH}' *****\n"
 
 zip_plugin || exit $?
@@ -185,7 +213,7 @@ echo -e "\n>>>> Installed plugin\n"
 ########## Setup the tests
 docker compose -f "${DOCKER_COMPOSE}" exec wp wp scaffold plugin-tests "${PLUGIN_NAME}" || exit $?
 
-if ! file_exists /tmp/wordpress-tests-lib || [[ ${RESET_TEST} -ne 0 ]]; then
+if ! file_exists /tmp/wordpress-tests-lib || [[ ${RESET_TEST_ENV} -ne 0 ]]; then
 	docker compose -f "${DOCKER_COMPOSE}" exec wp su www-data -s /bin/bash -- \
 		"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/bin/install-wp-tests.sh" \
 		"${WORDPRESS_DB_NAME}_test" root root "${WORDPRESS_DB_HOST}" latest || exit $?
@@ -196,6 +224,10 @@ require_plugins_test_bootstrap || exit $?
 echo -e "\n>>>> Generated plugin test environment\n"
 
 ########## Edit the PHPUnit config
+# if [[ -n "${TEST_HOOK}" ]]; then
+# TODO
+# fi
+
 if [[ -e "${PLUGIN_DIR}"/tests ]]; then
 	# There are tests, so delete the sample test and copy tests
 	docker compose -f "${DOCKER_COMPOSE}" exec wp \

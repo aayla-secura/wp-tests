@@ -69,3 +69,30 @@ Then you need to manually remove the persistent volumes:
 docker volume rm wptest_db-data
 docker volume rm wptest_wp-data
 ```
+
+# Bonus: generating PHP stubs
+
+If you use something like PHPStan you'll need stubs for Wordpress core as well
+as it's custom unit tests. Do:
+
+```
+composer install
+docker compose cp wp:/tmp/wordpress-tests-lib ./
+./generate-stubs.sh wordpress-tests-lib/includes/ wordpress-tests-lib
+./generate-stubs.sh vendor/yoast/phpunit-polyfills/src yoast-phpunit-polyfills
+./generate-stubs.sh vendor/phpunit/phpunit
+cp vendor/php-stubs/wordpress-stubs/wordpress-stubs.php php-stubs/
+```
+
+Then tell PHPStan or whatever you use to scan the `php-stubs` directory created.
+Example phpstan.neon:
+
+```
+parameters:
+    level: max
+    paths:
+        - tests/
+        - my-plugin-name/
+    scanDirectories:
+       - php-stubs/
+```

@@ -68,15 +68,6 @@ EOF
 	exit 1
 }
 
-check_plugin() {
-	PLUGIN_PATH="$(realpath "${PLUGIN_PATH}")"
-	[[ -d "${PLUGIN_PATH}" ]] || die "No such directory '${PLUGIN_PATH}'"
-
-	PLUGIN_NAME="$(basename "${PLUGIN_PATH}")"
-	PLUGIN_DIR="$(dirname "${PLUGIN_PATH}")"
-	PLUGIN_ZIP="${PLUGIN_DIR}/${PLUGIN_NAME}-${PLUGIN_VERSION}.zip"
-}
-
 zip_plugin() {
 	local curr_dir="${PWD}" res
 	cd "${PLUGIN_DIR}" || return $?
@@ -180,7 +171,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 ########## Validate args
-check_plugin
+PLUGIN_PATH="$(realpath "${PLUGIN_PATH}")"
+[[ -d "${PLUGIN_PATH}" ]] || die "No such directory '${PLUGIN_PATH}'"
+
+PLUGIN_NAME="$(basename "${PLUGIN_PATH}")"
+PLUGIN_DIR="$(dirname "${PLUGIN_PATH}")"
+PLUGIN_ZIP="${PLUGIN_DIR}/${PLUGIN_NAME}-${PLUGIN_VERSION}.zip"
+
 if [[ -n "${TEST_GROUP}" ]]; then
 	PHP_UNIT_EXTRA_ARGS+=(--group "${TEST_GROUP}")
 fi

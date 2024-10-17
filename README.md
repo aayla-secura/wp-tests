@@ -77,22 +77,7 @@ as it's custom unit tests. The repo includes the stubs in `php-stubs`, but you
 can regenerate them with:
 
 ```
-mkdir php-stubs
-
-composer install
-cp vendor/php-stubs/wordpress-stubs/wordpress-stubs.php php-stubs/
-
-git clone https://github.com/Yoast/PHPUnit-Polyfills
-./generate-stubs.sh PHPUnit-Polyfills/src yoast-phpunit-polyfills
-rm -rf PHPUnit-Polyfills
-
-git clone https://github.com/sebastianbergmann/phpunit
-./generate-stubs.sh phpunit/src phpunit
-rm -rf phpunit
-
-docker compose cp wp:/tmp/wordpress-tests-lib ./
-./generate-stubs.sh wordpress-tests-lib/includes/ wordpress-tests-lib
-rm -r wordpress-tests-lib
+./generate-stubs.sh -t
 ```
 
 Then tell PHPStan or whatever you use to scan the `php-stubs` directory created.

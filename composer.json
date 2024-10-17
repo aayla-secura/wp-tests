@@ -1,7 +1,5 @@
 {
     "require-dev": {
-        "phpunit/phpunit": "~9.3",
-        "yoast/phpunit-polyfills": "^3",
         "php-stubs/wordpress-stubs": "^6.6",
         "php-stubs/generator": "^0.8.4"
     }

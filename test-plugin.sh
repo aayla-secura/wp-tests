@@ -10,6 +10,7 @@ RUN_TESTS=1
 TEST_GROUP=""
 RESET_TEST_ENV=0
 REQUIRED_PLUGINS=()
+PRE_INIT_EXEC=""
 WORDPRESS_DB_NAME=wordpress
 WORDPRESS_DB_HOST=wptest-db
 #####
@@ -44,6 +45,10 @@ Options:
   -r|--require <plugin name>  Load the following plugin in the test bootstrap file.
                               Can be given more than once.
 
+  -x|--pre-init-exec <code>   Insert the given code in the test bootstrap file
+                              after loading the plugin (which is run inside
+                              muplugins_loaded).
+
   -d|--db-name <prefix>       SQL database name. Default is 'wordpress'.
                               The test database will have _test suffix and
                               credentials root:root.
@@ -62,6 +67,7 @@ RUN_TESTS=1
 TEST_GROUP=""
 RESET_TEST_ENV=0
 REQUIRED_PLUGINS=()
+PRE_INIT_EXEC=""
 WORDPRESS_DB_NAME=wordpress
 WORDPRESS_DB_HOST=wptest-db
 EOF
@@ -92,10 +98,14 @@ require_plugins_test_bootstrap() {
 		file_exists "${file}" || file="/var/www/html/wp-content/plugins/${plugin}/plugin.php"
 		file_exists "${file}" || die "Cannot find plugin file for '${plugin}'"
 
+		# escape backslash and forward slash
+		file="${file//\\/\\\\}"
+		file="${file//\//\\/}"
+
 		echo -e "\n>>>> Requiring '${plugin}' in test bootstrap\n"
 		# insert the require before the line that requires our plugin
 		docker compose -f "${DOCKER_COMPOSE}" exec wp sed -E -i \
-			'/^(\s*)require .*__FILE__.*\/('"${PLUGIN_NAME}"'|plugin)\.php/ s/^((\s*).*)/\2require '"'${file//\//\\/}'"';\n\1/' \
+			's/^(\s*)require .*__FILE__.*\/('"${PLUGIN_NAME}"'|plugin)\.php/\1require '"'${file}'"';\n\0/' \
 			"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests/bootstrap.php"
 	done
 }
@@ -145,6 +155,12 @@ while [[ $# -gt 0 ]]; do
 	-r | --require)
 		[[ $# -ge 2 ]] || die "-r requires an argument"
 		REQUIRED_PLUGINS+=("${2}")
+		shift 2
+		;;
+
+	-x | --pre-init-exec)
+		[[ $# -ge 2 ]] || die "-x requires an argument"
+		PRE_INIT_EXEC="${2}"
 		shift 2
 		;;
 
@@ -220,7 +236,19 @@ fi
 require_plugins_test_bootstrap || exit $?
 echo -e "\n>>>> Generated plugin test environment\n"
 
-########## Edit the PHPUnit config
+########## Add pre-init code to bootstrap
+if [[ -n "${PRE_INIT_EXEC}" ]]; then
+	# escape backslash and forward slash
+	PRE_INIT_EXEC="${PRE_INIT_EXEC//\\/\\\\}"
+	PRE_INIT_EXEC="${PRE_INIT_EXEC//\//\\/}"
+
+	# insert the code after the line that requires our plugin
+	docker compose -f "${DOCKER_COMPOSE}" exec wp sed -E -i \
+		's/^(\s*)require .*__FILE__.*\/('"${PLUGIN_NAME}"'|plugin)\.php.*/\0\n\1'"${PRE_INIT_EXEC}"'/' \
+		"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests/bootstrap.php"
+fi
+
+########## Edit the hook that the plugin runs in TODO possible?
 # if [[ -n "${TEST_HOOK}" ]]; then
 # TODO
 # fi

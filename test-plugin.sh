@@ -10,6 +10,7 @@ RUN_TESTS=1
 TEST_GROUP=""
 RESET_TEST_ENV=0
 REQUIRED_PLUGINS=()
+PRE_INIT_EXEC_FILE=""
 PRE_INIT_EXEC=""
 WORDPRESS_DB_NAME=wordpress
 WORDPRESS_DB_HOST=wptest-db
@@ -42,8 +43,14 @@ Options:
 
   -R|--reset                  Reset the test installation.
 
-  -r|--require <plugin name>  Load the following plugin in the test bootstrap file.
-                              Can be given more than once.
+  -r|--require <plugin name>  Load the following plugin in the test bootstrap
+                              file. Can be given more than once.
+
+  -X|--pre-init-exec-file <file>
+                              Load the given file in the test bootstrap file
+                              after loading the plugin (which is run inside
+                              muplugins_loaded). The filename should be
+                              relative to the test directory.
 
   -x|--pre-init-exec <code>   Insert the given code in the test bootstrap file
                               after loading the plugin (which is run inside
@@ -67,6 +74,7 @@ RUN_TESTS=1
 TEST_GROUP=""
 RESET_TEST_ENV=0
 REQUIRED_PLUGINS=()
+PRE_INIT_EXEC_FILE=""
 PRE_INIT_EXEC=""
 WORDPRESS_DB_NAME=wordpress
 WORDPRESS_DB_HOST=wptest-db
@@ -158,6 +166,12 @@ while [[ $# -gt 0 ]]; do
 		shift 2
 		;;
 
+	-X | --pre-init-exec-file)
+		[[ $# -ge 2 ]] || die "-X requires an argument"
+		PRE_INIT_EXEC_FILE="${2}"
+		shift 2
+		;;
+
 	-x | --pre-init-exec)
 		[[ $# -ge 2 ]] || die "-x requires an argument"
 		PRE_INIT_EXEC="${2}"
@@ -242,9 +256,24 @@ if [[ -n "${PRE_INIT_EXEC}" ]]; then
 	PRE_INIT_EXEC="${PRE_INIT_EXEC//\\/\\\\}"
 	PRE_INIT_EXEC="${PRE_INIT_EXEC//\//\\/}"
 
+	echo -e "\n>>>> Inserting pre-init exec code\n"
+
 	# insert the code after the line that requires our plugin
 	docker compose -f "${DOCKER_COMPOSE}" exec wp sed -E -i \
 		's/^(\s*)require .*__FILE__.*\/('"${PLUGIN_NAME}"'|plugin)\.php.*/\0\n\1'"${PRE_INIT_EXEC}"'/' \
+		"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests/bootstrap.php"
+fi
+
+if [[ -n "${PRE_INIT_EXEC_FILE}" ]]; then
+	# escape backslash and forward slash
+	PRE_INIT_EXEC_FILE="${PRE_INIT_EXEC_FILE//\\/\\\\}"
+	PRE_INIT_EXEC_FILE="${PRE_INIT_EXEC_FILE//\//\\/}"
+
+	echo -e "\n>>>> Inserting pre-init exec file\n"
+
+	# insert the code after the line that requires our plugin
+	docker compose -f "${DOCKER_COMPOSE}" exec wp sed -E -i \
+		's/^(\s*)require .*__FILE__.*\/('"${PLUGIN_NAME}"'|plugin)\.php.*/\0\n\1require dirname(__FILE__) . '"'\\/${PRE_INIT_EXEC_FILE}';"'/' \
 		"/var/www/html/wp-content/plugins/${PLUGIN_NAME}/tests/bootstrap.php"
 fi
 

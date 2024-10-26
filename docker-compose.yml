@@ -26,6 +26,8 @@ services:
       PMA_PASSWORD: wordpress
     ports:
       - 8888:80
+    depends_on:
+      - db
 
   # Wordpress
   wp:

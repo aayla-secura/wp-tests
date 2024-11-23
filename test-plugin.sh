@@ -8,6 +8,7 @@ PLUGIN_VERSION="0.0.0"
 RUN_TESTS=1
 # TEST_HOOK="" # TODO
 TEST_GROUP=""
+TEST_FILTER=""
 RESET_TEST_ENV=0
 REQUIRED_PLUGINS=()
 PRE_INIT_EXEC_FILE=""
@@ -41,6 +42,8 @@ Options:
 
   -g|--group <group>          Run only the given group of tests unit tests.
 
+  -f|--filter <pattern>       Pass the given filter to PHPUnit.
+
   -R|--reset                  Reset the test installation.
 
   -r|--require <plugin name>  Load the following plugin in the test bootstrap
@@ -72,6 +75,7 @@ PLUGIN_PATH=""
 PLUGIN_VERSION="0.0.0"
 RUN_TESTS=1
 TEST_GROUP=""
+TEST_FILTER=""
 RESET_TEST_ENV=0
 REQUIRED_PLUGINS=()
 PRE_INIT_EXEC_FILE=""
@@ -155,6 +159,12 @@ while [[ $# -gt 0 ]]; do
 		shift 2
 		;;
 
+	-f | --filter)
+		[[ $# -ge 2 ]] || die "-f requires an argument"
+		TEST_FILTER="${2}"
+		shift 2
+		;;
+
 	-R | --reset)
 		RESET_TEST_ENV=1
 		shift 1
@@ -210,6 +220,10 @@ PLUGIN_ZIP="${PLUGIN_DIR}/${PLUGIN_NAME}-${PLUGIN_VERSION}.zip"
 
 if [[ -n "${TEST_GROUP}" ]]; then
 	PHP_UNIT_EXTRA_ARGS+=(--group "${TEST_GROUP}")
+fi
+
+if [[ -n "${TEST_FILTER}" ]]; then
+	PHP_UNIT_EXTRA_ARGS+=(--filter "${TEST_FILTER}")
 fi
 
 ########## Zip and upload the plugin

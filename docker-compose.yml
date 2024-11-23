@@ -24,6 +24,8 @@ services:
       PMA_HOST: wptest-db
       PMA_USER: wordpress
       PMA_PASSWORD: wordpress
+    volumes:
+      - ./docker/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
     ports:
       - 8081:80
     depends_on:
